@@ -60,7 +60,8 @@ void draw_circle2buffer(uint16_t color, uint16_t x0, uint16_t y0, uint16_t r, ui
 void fill_circle2buffer(uint16_t color, uint16_t x0, uint16_t y0, uint16_t r, uint16_t buffer_data_address);
 void draw_rounded_rect2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t r, uint16_t buffer_data_address);
 void fill_rounded_rect2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t r, uint16_t buffer_data_address);
-void draw_char2buffer(char chr, uint16_t x, uint16_t y, uint16_t buffer_data_address);
+// void draw_char2buffer(char chr, uint16_t x, uint16_t y, uint16_t buffer_data_address);
+void draw_char2buffer(char chr, uint16_t buffer_addr);
 void draw_string2buffer(char * str, uint16_t buffer_data_address);
 
 #endif // BITMAP_GRAPHICS_DB_H
