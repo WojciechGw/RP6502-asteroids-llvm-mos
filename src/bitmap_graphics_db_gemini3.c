@@ -1,3 +1,6 @@
+// Optimize for size to fit in Release builds
+#pragma GCC optimize ("Os")
+
 #include <rp6502.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -69,6 +72,11 @@ void switch_buffer(uint16_t buffer_data_address)
 {
     xram0_struct_set(canvas_struct_addr, vga_mode3_config_t, xram_data_ptr, buffer_data_address);
 }
+
+void erase_buffer(uint16_t buffer_data_address) __attribute__((noinline));
+void draw_pixel2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t buffer_data_address) __attribute__((noinline));
+void draw_line2buffer(uint16_t color, int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t buffer_data_address) __attribute__((noinline));
+
 
 // ---------------------------------------------------------------------------
 // Optimized Erase

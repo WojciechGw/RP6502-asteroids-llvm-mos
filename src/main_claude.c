@@ -1,6 +1,9 @@
 // ---------------------------------------------------------------------------
-// Asteroids Clone for RP6502 - MINIMAL RAM VERSION
+// Asteroids Clone for RP6502 - MINIMAL RAM VERSION WITH SOUND
 // ---------------------------------------------------------------------------
+
+// Optimize for size to fit in Release builds
+#pragma GCC optimize ("Os")
 
 #include <rp6502.h>
 #include <stdio.h>
@@ -10,6 +13,8 @@
 #include "colors.h"
 #include "usb_hid_keys.h"
 #include "bitmap_graphics_db.h"
+#include "ezpsg.h"
+#include "sound.h"
 
 #define SCREEN_WIDTH 640
 #define SCREEN_HEIGHT 360
@@ -23,11 +28,11 @@
 #define SHIP_ACCEL 64
 #define SHIP_MAX_SPEED 512
 #define SHIP_FRICTION 2
-#define BULLET_SPEED 800
-#define ASTEROID_SPEED_LARGE 150
-#define ASTEROID_SPEED_MEDIUM 200
-#define ASTEROID_SPEED_SMALL 250
-#define ASTEROID_ROT_SPEED 1  // Slower rotation
+#define BULLET_SPEED 1800
+#define ASTEROID_SPEED_LARGE 700
+#define ASTEROID_SPEED_MEDIUM 900
+#define ASTEROID_SPEED_SMALL 1200
+#define ASTEROID_ROT_SPEED 1
 #define INVULNERABLE_TIME 90
 
 #define KEYBOARD_INPUT 0xFF10
@@ -38,7 +43,6 @@ uint8_t keystates[KEYBOARD_BYTES] = {0};
 uint16_t buffers[2];
 uint8_t active_buffer = 0;
 
-// CRITICAL: Use const to store in ROM, not RAM!
 const int16_t sin_table[NUM_ROTATION_STEPS] = {
     0, 25, 50, 74, 98, 120, 142, 162, 180, 197, 212, 225, 236, 244, 250, 254,
     256, 254, 250, 244, 236, 225, 212, 197, 180, 162, 142, 120, 98, 74, 50, 25,
@@ -53,7 +57,6 @@ const int16_t cos_table[NUM_ROTATION_STEPS] = {
     0, 25, 50, 74, 98, 120, 142, 162, 180, 197, 212, 225, 236, 244, 250, 254
 };
 
-// CRITICAL: Use const for shapes stored in ROM
 const int8_t ship_shape[4][2] = {
     {10, 0}, {-8, 6}, {-5, 0}, {-8, -6}
 };
@@ -78,22 +81,22 @@ const int8_t asteroid_small[8][2] = {
 };
 
 typedef struct {
-    int32_t x, y;  // Use 32-bit to handle 640<<8 and 360<<8
-    int32_t vx, vy;  // Also 32-bit to handle large velocities
+    int32_t x, y;
+    int32_t vx, vy;
     uint8_t angle;
     bool active;
 } Ship;
 
 typedef struct {
-    int32_t x, y;  // Use 32-bit for positions
-    int32_t vx, vy;  // 32-bit for velocities
+    int32_t x, y;
+    int32_t vx, vy;
     uint8_t lifetime;
     bool active;
 } Bullet;
 
 typedef struct {
-    int32_t x, y;  // Use 32-bit for positions
-    int32_t vx, vy;  // 32-bit for velocities
+    int32_t x, y;
+    int32_t vx, vy;
     uint8_t size, angle, rot_speed;
     bool active;
 } Asteroid;
@@ -103,7 +106,7 @@ Bullet bullets[MAX_BULLETS];
 Asteroid asteroids[MAX_ASTEROIDS];
 
 uint16_t score = 0;
-uint8_t lives = 3;
+uint8_t lives = 1;
 uint8_t level = 1;
 uint8_t invulnerable_timer = 0;
 bool game_over = false;
@@ -166,9 +169,9 @@ void spawn_asteroid(uint8_t size, int32_t x, int32_t y, int32_t vx, int32_t vy) 
             asteroids[i].vy = vy;
             asteroids[i].size = size;
             asteroids[i].angle = rand() & 63;
-            // Slower rotation: 0 or 1 step per frame
             asteroids[i].rot_speed = rand() & ASTEROID_ROT_SPEED;
             asteroids[i].active = true;
+            printf("rot speed: %i\n", asteroids[i].rot_speed);
             return;
         }
     }
@@ -190,8 +193,6 @@ void init_level(void) {
         } while (abs((int16_t)(x >> 8) - HALF_WIDTH) < 100 && 
                  abs((int16_t)(y >> 8) - HALF_HEIGHT) < 100);
         
-        // Generate random velocity in fixed point
-        // Range: -32 to +32 pixels per frame (after >> 8)
         int32_t vx = (int32_t)((rand() % ASTEROID_SPEED_LARGE) - (ASTEROID_SPEED_LARGE >> 1));
         int32_t vy = (int32_t)((rand() % ASTEROID_SPEED_LARGE) - (ASTEROID_SPEED_LARGE >> 1));
         
@@ -208,14 +209,14 @@ void fire_bullet(void) {
             
             int16_t sx = sin_table[ship.angle];
             int16_t cx = cos_table[ship.angle];
-            // BULLET_SPEED is 320 (unscaled pixels per frame)
-            // cx/sx are scaled by 256
-            // Result: (320 * 256) >> 8 = 320 (velocity in fixed point matching position scale)
             bullets[i].vx = ship.vx + (((int32_t)BULLET_SPEED * cx) >> 8);
             bullets[i].vy = ship.vy + (((int32_t)BULLET_SPEED * sx) >> 8);
             
             bullets[i].lifetime = BULLET_LIFETIME;
             bullets[i].active = true;
+            
+            // SOUND: Play shoot sound
+            play_shoot_sound();
             return;
         }
     }
@@ -289,13 +290,16 @@ void update_game(void) {
                 bullets[i].active = false;
                 asteroids[j].active = false;
                 
+                // SOUND: Play explosion based on asteroid size
+                play_explosion_sound(asteroids[j].size);
+                
                 if (asteroids[j].size == 0) score += 20;
                 else if (asteroids[j].size == 1) score += 50;
                 else score += 100;
                 
                 if (asteroids[j].size < 2) {
                     uint8_t new_size = asteroids[j].size + 1;
-                    uint8_t speed = (new_size == 1) ? ASTEROID_SPEED_MEDIUM : ASTEROID_SPEED_SMALL;
+                    uint16_t speed = (new_size == 1) ? ASTEROID_SPEED_MEDIUM : ASTEROID_SPEED_SMALL;
                     
                     int16_t vx1 = ((rand() % speed) - (speed >> 1));
                     int16_t vy1 = ((rand() % speed) - (speed >> 1));
@@ -322,8 +326,12 @@ void update_game(void) {
                 ship.active = false;
                 lives--;
                 
+                // SOUND: Play large explosion for ship
+                play_explosion_sound(0);
+                
                 if (lives == 0) {
                     game_over = true;
+                    play_game_over_sound();
                 } else {
                     init_ship();
                 }
@@ -405,11 +413,61 @@ void read_keyboard(void) {
     }
 }
 
+/* quick test - call from main after init_sound() */
+void test_waveforms(void) {
+    printf("test_waveforms\n");
+    // Square tone (should be audible)
+    uint16_t x = ezpsg_play_note(
+        c6,    // note
+        30,    // duration
+        30,    // release
+        0xFF,  // duty
+        0xF0,  // vol_attack
+        0x90,  // vol_decay
+        EZPSG_WAVE_SQUARE,
+        EZPSG_PAN_CENTER
+    );
+    if (x != 0xFFFF) {
+        RIA.addr0 = x + 5;   // wave_release is the 6th byte in struct (0..5): freq lo, hi, duty, vol_attack, vol_decay, wave_release
+        RIA.step0 = 0;
+        uint8_t val = RIA.rw0;
+        printf("square val: %i\n", val);
+        printf("psg base = %04x\n", x);
+    }
+
+    // small delay (let the tick call advance a bit)
+    for (int i = 0; i < 60; ++i) ezpsg_tick(1);
+
+    // Noise (should be audible if waveform defined correctly)
+    x = ezpsg_play_note(
+        c6,
+        30,
+        30,
+        0xFF,
+        0xF0,
+        0x90,
+        EZPSG_WAVE_NOISE,
+        EZPSG_PAN_CENTER
+    );
+    if (x != 0xFFFF) {
+        RIA.addr0 = x + 5;   // wave_release is the 6th byte in struct (0..5): freq lo, hi, duty, vol_attack, vol_decay, wave_release
+        RIA.step0 = 0;
+        uint8_t val = RIA.rw0;
+        printf("noise val: %i\n", val);
+        printf("psg base = %04x\n", x);
+    }
+}
+
+
 int main(void) {
     buffers[0] = 0x0000;
     buffers[1] = 0x7080;
     
     init_bitmap_graphics(0xFF00, buffers[0], 0, 4, SCREEN_WIDTH, SCREEN_HEIGHT, 1);
+    
+    // SOUND: Initialize sound system
+    init_sound();
+    // test_waveforms();
     
     erase_buffer(buffers[0]);
     erase_buffer(buffers[1]);
@@ -433,7 +491,7 @@ int main(void) {
     draw_string2buffer("Space:Fire ESC:Quit", buffers[active_buffer]);
     set_cursor(220, 220);
     draw_string2buffer("Press SPACE", buffers[active_buffer]);
-    
+
     bool waiting = true;
     while (waiting) {
         read_keyboard();
@@ -446,8 +504,18 @@ int main(void) {
     
     bool running = true;
     bool fire_was_pressed = false;
+
+    uint8_t v; // vsync counter, incements every 1/60 second, rolls over every 256
+    // vsync loop
+    v = RIA.vsync;
     
     while (running) {
+        if (v == RIA.vsync) {
+            continue; // wait until vsync is incremented
+        } else {
+            v = RIA.vsync; // new value for v
+        }
+
         read_keyboard();
         
         if (game_over) {
@@ -475,9 +543,6 @@ int main(void) {
                 thrust_on = true;
                 int16_t sx = sin_table[ship.angle];
                 int16_t cx = cos_table[ship.angle];
-                // SHIP_ACCEL is unscaled (8)
-                // cx/sx are scaled by 256
-                // Result: (8 * 256) >> 8 = 8 pixels per frame^2 in fixed point
                 ship.vx += ((int32_t)SHIP_ACCEL * cx) >> 8;
                 ship.vy += ((int32_t)SHIP_ACCEL * sx) >> 8;
                 
@@ -485,6 +550,13 @@ int main(void) {
                 if (ship.vx < -SHIP_MAX_SPEED) ship.vx = -SHIP_MAX_SPEED;
                 if (ship.vy > SHIP_MAX_SPEED) ship.vy = SHIP_MAX_SPEED;
                 if (ship.vy < -SHIP_MAX_SPEED) ship.vy = -SHIP_MAX_SPEED;
+                
+                // SOUND: Start the thrust sound (or keep it going)
+                start_thrust_sound();
+            } else {
+                // SOUND: Tell our system the thrust sound should stop.
+                // The sound will fade out on its own.
+                stop_thrust_sound();
             }
             
             if (key(KEY_SPACE)) {
@@ -502,6 +574,9 @@ int main(void) {
         }
         
         update_game();
+        
+        // SOUND: Update sound effects each frame
+        update_sound();
         
         erase_buffer(buffers[!active_buffer]);
         draw_game(buffers[!active_buffer]);
