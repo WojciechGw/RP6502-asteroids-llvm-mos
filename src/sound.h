@@ -26,4 +26,8 @@ void play_game_over_sound(void);
 void start_thrust_sound(void);
 void stop_thrust_sound(void);
 
+void update_beat_sound(uint8_t asteroid_count); 
+void play_ufo_sound(void); 
+void stop_ufo_sound(void);
+
 #endif // SOUND_H

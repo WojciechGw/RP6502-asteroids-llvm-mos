@@ -34,6 +34,10 @@
 #define ASTEROID_SPEED_SMALL 900
 #define ASTEROID_ROT_SPEED 1
 #define INVULNERABLE_TIME 90
+#define UFO_SPAWN_TIME 500
+#define UFO_SPEED 400
+#define UFO_SHOOT_INTERVAL 40
+
 
 #define NUM_LARGE_SHAPES 3
 #define NUM_MEDIUM_SHAPES 3
@@ -117,6 +121,15 @@ const int8_t asteroid_small_3[10][2] = {
     {-1, 4}, {0, 2}, {2, 4}, {4, 2}
 };
 
+const int8_t ufo_shape[12][2] = {
+    {-4, 3}, {-11, -1}, {-4, -5}, {4, -5}, {11, -1}, {4, 3},
+    {3, 7}, {-3, 7}, {-4, 3}, {4, 3}, {11, -1}, {-11, -1}
+};
+
+typedef struct { int32_t x, y, vx, vy; 
+    uint8_t shoot_timer; 
+    bool active; } UFO;
+
 typedef struct {
     int32_t x, y;
     int32_t vx, vy;
@@ -141,7 +154,10 @@ typedef struct {
 
 Ship ship;
 Bullet bullets[MAX_BULLETS];
+Bullet ufo_bullets[MAX_BULLETS];
 Asteroid asteroids[MAX_ASTEROIDS];
+UFO ufo;
+
 
 uint16_t score = 0;
 uint8_t lives = 3;
@@ -150,6 +166,7 @@ uint8_t invulnerable_timer = 0;
 bool game_over = false;
 bool thrust_on = false;
 uint8_t frame_counter = 0;
+uint16_t ufo_spawn_timer = 0;
 
 char text_buffer[24];
 
@@ -237,6 +254,8 @@ void init_level(void) {
         }
     }
     
+    ufo.active = false; ufo_spawn_timer = 50;
+
     uint8_t num_asteroids = level + 1;
     if (num_asteroids > 4) num_asteroids = 4;
     
@@ -290,6 +309,37 @@ void fire_bullet(void) {
     }
 }
 
+
+void spawn_ufo(void) {
+    if (ufo.active) return;
+    ufo.x = (rand() & 1) ? 20 : ((int32_t)(SCREEN_WIDTH - 20) << 8);
+    ufo.y = (int32_t)random(50, SCREEN_HEIGHT - 50) << 8;
+    ufo.vx = (ufo.x == 20) ? UFO_SPEED : -UFO_SPEED; ufo.vy = ((rand() % 50) - 25);
+    ufo.shoot_timer = UFO_SHOOT_INTERVAL; ufo.active = true;
+    printf("Spawning UFO x: %d, y: %d, speed: %d\n", (int)(ufo.x >> 8), (int)(ufo.y >> 8), (int)(ufo.vx >> 8));
+    play_ufo_sound();
+}
+
+void ufo_fire_bullet(void) {
+    printf("ufo_fire_bullet \n");
+    for (uint8_t i = 0; i < MAX_BULLETS; i++) {
+        if (!ufo_bullets[i].active) {
+            int16_t dx = (int16_t)(ship.x >> 8) - (int16_t)(ufo.x >> 8);
+            int16_t dy = (int16_t)(ship.y >> 8) - (int16_t)(ufo.y >> 8);
+            dx += (rand() % 60) - 30; dy += (rand() % 60) - 30;
+            int16_t mag = (abs(dx) > abs(dy)) ? abs(dx) : abs(dy);
+            if (mag > 0) { ufo_bullets[i].vx = ((int32_t)dx * BULLET_SPEED) / mag; ufo_bullets[i].vy = ((int32_t)dy * BULLET_SPEED) / mag; }
+            else { ufo_bullets[i].vx = BULLET_SPEED; ufo_bullets[i].vy = 0; }
+            ufo_bullets[i].x = ufo.x + ufo_bullets[i].vx; 
+            ufo_bullets[i].y = ufo.y + ufo_bullets[i].vy;
+            ufo_bullets[i].lifetime = BULLET_LIFETIME; ufo_bullets[i].active = true;
+            // printf("ufo x: %d, ufo.y: %d, b.x: %d, b.y: %d, dx: %d, dy: %d \n", (int)(ufo.x >>8), (int)(ufo.y >> 8), (int)(bullets[i].x >>8), (int)(bullets[i].y >> 8), dx, dy);
+            // printf("mag: %d, active: %i \n", mag, bullets[i].active);
+            play_shoot_sound(); return;
+        }
+    }
+}
+
 bool check_collision(int32_t x1, int32_t y1, uint8_t r1,
                      int32_t x2, int32_t y2, uint8_t r2) {
     int16_t dx = (int16_t)(x1 >> 8) - (int16_t)(x2 >> 8);
@@ -309,6 +359,25 @@ void update_game(void) {
     
     frame_counter++;
     if (invulnerable_timer > 0) invulnerable_timer--;
+
+    uint8_t asteroid_count = 0;
+    for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) if (asteroids[i].active) asteroid_count++;
+    update_beat_sound(asteroid_count);
+
+    if (!ufo.active && ufo_spawn_timer > 0) { ufo_spawn_timer--; if (ufo_spawn_timer == 0) spawn_ufo(); }
+    if (ufo.active) {
+        ufo.x += ufo.vx; ufo.y += ufo.vy; wrap_position(&ufo.x, &ufo.y);
+        int16_t ux = (int16_t)(ufo.x >> 8);
+        // printf("ufo x: %d  ", ux); 
+        if ((ux < -20) || (ux > SCREEN_WIDTH + 20)) { 
+            // printf("hide ufo \n");
+            ufo.active = false; 
+            ufo_spawn_timer = UFO_SPAWN_TIME; 
+            stop_ufo_sound(); 
+        }
+        if (ufo.active && ship.active) { ufo.shoot_timer--; if (ufo.shoot_timer == 0) { ufo_fire_bullet(); ufo.shoot_timer = UFO_SHOOT_INTERVAL; } }
+        // printf("ufo shoot timer: %d\n", ufo.shoot_timer);
+    }
     
     if (ship.active) {
         if (ship.vx > 0) ship.vx -= SHIP_FRICTION;
@@ -330,6 +399,16 @@ void update_game(void) {
             bullets[i].lifetime--;
             if (bullets[i].lifetime == 0) {
                 bullets[i].active = false;
+            }
+        }
+        if (ufo_bullets[i].active) {
+            ufo_bullets[i].x += ufo_bullets[i].vx;
+            ufo_bullets[i].y += ufo_bullets[i].vy;
+            wrap_position(&ufo_bullets[i].x, &ufo_bullets[i].y);
+            
+            ufo_bullets[i].lifetime--;
+            if (ufo_bullets[i].lifetime == 0) {
+                ufo_bullets[i].active = false;
             }
         }
     }
@@ -380,7 +459,15 @@ void update_game(void) {
                 break;
             }
         }
+        if (ufo.active && bullets[i].active) {
+            if (check_collision(bullets[i].x, bullets[i].y, 1, ufo.x, ufo.y, 12)) {
+                bullets[i].active = false; ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME;
+                play_explosion_sound(0); stop_ufo_sound(); score += 200;
+            }
+        }
     }
+
+
     
     if (ship.active && invulnerable_timer == 0) {
         for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) {
@@ -406,6 +493,19 @@ void update_game(void) {
                 break;
             }
         }
+        for (uint8_t i = 0; i < MAX_BULLETS; i++) {
+            if (!ufo_bullets[i].active) continue;
+            if (check_collision(ufo_bullets[i].x, ufo_bullets[i].y, 1, ship.x, ship.y, 8)) {
+                bullets[i].active = false; ship.active = false; lives--; 
+                play_explosion_sound(0); 
+                if (lives == 0) { game_over = true; play_game_over_sound(); } else init_ship();
+            }
+        }
+        if (ufo.active && check_collision(ship.x, ship.y, 8, ufo.x, ufo.y, 12)) {
+            ship.active = false; ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME; lives--;
+            play_explosion_sound(0); stop_ufo_sound();
+            if (lives == 0) { game_over = true; play_game_over_sound(); } else init_ship();
+        }
     }
     
     bool any_asteroids = false;
@@ -423,6 +523,7 @@ void update_game(void) {
 }
 
 void draw_game(uint16_t buffer) {
+
     if (ship.active && (invulnerable_timer == 0 || (frame_counter & 4))) {
         draw_rotated_polygon(ship_shape, 4, ship.x, ship.y, ship.angle, buffer);
         
@@ -430,11 +531,21 @@ void draw_game(uint16_t buffer) {
             draw_rotated_polygon(flame_shape, 3, ship.x, ship.y, ship.angle, buffer);
         }
     }
+
+    if (ufo.active) draw_rotated_polygon(ufo_shape, 12, ufo.x, ufo.y, 32, buffer);
     
     for (uint8_t i = 0; i < MAX_BULLETS; i++) {
         if (bullets[i].active) {
             int16_t bx = (int16_t)(bullets[i].x >> 8);
             int16_t by = (int16_t)(bullets[i].y >> 8);
+            draw_pixel2buffer(WHITE, bx, by, buffer);
+            draw_pixel2buffer(WHITE, bx + 1, by, buffer);
+            draw_pixel2buffer(WHITE, bx, by + 1, buffer);
+            draw_pixel2buffer(WHITE, bx + 1, by + 1, buffer);
+        }
+        if (ufo_bullets[i].active) {
+            int16_t bx = (int16_t)(ufo_bullets[i].x >> 8);
+            int16_t by = (int16_t)(ufo_bullets[i].y >> 8);
             draw_pixel2buffer(WHITE, bx, by, buffer);
             draw_pixel2buffer(WHITE, bx + 1, by, buffer);
             draw_pixel2buffer(WHITE, bx, by + 1, buffer);
@@ -502,9 +613,9 @@ void draw_game(uint16_t buffer) {
         }
     }
     
-    if (drawn_count > 0 && (frame_counter % 60) == 0) {
-        printf("Drew %u asteroids this frame\n", drawn_count);
-    }
+    // if (drawn_count > 0 && (frame_counter % 60) == 0) {
+    //     printf("Drew %u asteroids this frame\n", drawn_count);
+    // }
     
     set_cursor(10, 10);
     sprintf(text_buffer, "SCR:%u", score);

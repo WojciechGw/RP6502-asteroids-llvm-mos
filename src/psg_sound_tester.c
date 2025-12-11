@@ -58,7 +58,7 @@ static struct {
     uint8_t wave_release;
     int8_t pan;
 } params = {
-    .note = 60,           // Middle C (c4)
+    .note = c4,           // Middle C (c4)
     .duration = 10,
     .release = 5,
     .duty = 128,
@@ -72,16 +72,28 @@ static int current_param = 0;
 
 // Note names for display
 static const char* note_names[] = {
-    "C0", "Cs0", "D0", "Ds0", "E0", "F0", "Fs0", "G0", "Gs0", "A0", "As0", "B0",
-    "C1", "Cs1", "D1", "Ds1", "E1", "F1", "Fs1", "G1", "Gs1", "A1", "As1", "B1",
-    "C2", "Cs2", "D2", "Ds2", "E2", "F2", "Fs2", "G2", "Gs2", "A2", "As2", "B2",
-    "C3", "Cs3", "D3", "Ds3", "E3", "F3", "Fs3", "G3", "Gs3", "A3", "As3", "B3",
-    "C4", "Cs4", "D4", "Ds4", "E4", "F4", "Fs4", "G4", "Gs4", "A4", "As4", "B4",
-    "C5", "Cs5", "D5", "Ds5", "E5", "F5", "Fs5", "G5", "Gs5", "A5", "As5", "B5",
-    "C6", "Cs6", "D6", "Ds6", "E6", "F6", "Fs6", "G6", "Gs6", "A6", "As6", "B6",
-    "C7", "Cs7", "D7", "Ds7", "E7", "F7", "Fs7", "G7", "Gs7", "A7", "As7", "B7",
-    "C8", "Cs8", "D8", "Ds8", "E8", "F8", "Fs8", "G8", "Gs8", "A8", "As8", "B8"
+    "A0","As0","B0",
+    "C1","Cs1","D1","Ds1","E1","F1","Fs1","G1","Gs1","A1","As1","B1",
+    "C2","Cs2","D2","Ds2","E2","F2","Fs2","G2","Gs2","A2","As2","B2",
+    "C3","Cs3","D3","Ds3","E3","F3","Fs3","G3","Gs3","A3","As3","B3",
+    "C4","Cs4","D4","Ds4","E4","F4","Fs4","G4","Gs4","A4","As4","B4",
+    "C5","Cs5","D5","Ds5","E5","F5","Fs5","G5","Gs5","A5","As5","B5",
+    "C6","Cs6","D6","Ds6","E6","F6","Fs6","G6","Gs6","A6","As6","B6",
+    "C7","Cs7","D7","Ds7","E7","F7","Fs7","G7","Gs7","A7","As7","B7",
+    "C8"
 };
+
+// static const char* note_names[] = {
+//     "C0", "Cs0", "D0", "Ds0", "E0", "F0", "Fs0", "G0", "Gs0", "A0", "As0", "B0",
+//     "C1", "Cs1", "D1", "Ds1", "E1", "F1", "Fs1", "G1", "Gs1", "A1", "As1", "B1",
+//     "C2", "Cs2", "D2", "Ds2", "E2", "F2", "Fs2", "G2", "Gs2", "A2", "As2", "B2",
+//     "C3", "Cs3", "D3", "Ds3", "E3", "F3", "Fs3", "G3", "Gs3", "A3", "As3", "B3",
+//     "C4", "Cs4", "D4", "Ds4", "E4", "F4", "Fs4", "G4", "Gs4", "A4", "As4", "B4",
+//     "C5", "Cs5", "D5", "Ds5", "E5", "F5", "Fs5", "G5", "Gs5", "A5", "As5", "B5",
+//     "C6", "Cs6", "D6", "Ds6", "E6", "F6", "Fs6", "G6", "Gs6", "A6", "As6", "B6",
+//     "C7", "Cs7", "D7", "Ds7", "E7", "F7", "Fs7", "G7", "Gs7", "A7", "As7", "B7",
+//     "C8", "Cs8", "D8", "Ds8", "E8", "F8", "Fs8", "G8", "Gs8", "A8", "As8", "B8"
+// };
 
 static const char* waveform_names[] = {
     "Sine", "Square", "Sawtooth", "Triangle", "Noise"
@@ -117,7 +129,7 @@ static void display_params(void) {
     printf("%c Note:            %3d (%s)\n", 
            current_param == PARAM_NOTE ? '>' : ' ',
            params.note, 
-           params.note < 108 ? note_names[params.note] : "???");
+           params.note < 88 ? note_names[params.note] : "???");
     
     printf("%c Duration:        %3d ticks\n",
            current_param == PARAM_DURATION ? '>' : ' ',
@@ -193,7 +205,7 @@ static void play_sound(void) {
 static void adjust_param(int delta) {
     switch (current_param) {
         case PARAM_NOTE:
-            if (delta > 0 && params.note < 107) params.note += delta;
+            if (delta > 0 && params.note < 87) params.note += delta;
             else if (delta < 0 && params.note > 0) {
                 params.note = (params.note >= -delta) ? params.note + delta : 0;
             }

@@ -8,9 +8,8 @@ rp6502_executable(asteroids)
 target_sources(asteroids PRIVATE
     src/colors.c
     src/bitmap_graphics_db.c
-    src/ezpsg.c
     src/sound.c
     src/main_claude.c
-    # src/poprock.c
+    src/ezpsg.c
     # src/psg_sound_tester.c
 )
