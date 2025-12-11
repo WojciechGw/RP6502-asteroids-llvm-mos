@@ -30,6 +30,15 @@ static uint16_t canvas_h = 360;
 // Default to 1bpp logic
 static uint8_t bpp_mode = 0; 
 
+uint16_t random(uint16_t low_limit, uint16_t high_limit)
+{
+    if (low_limit > high_limit) {
+        swap(low_limit, high_limit);
+    }
+
+    return (uint16_t)((rand() % (high_limit-low_limit)) + low_limit);
+}
+
 void init_bitmap_graphics(uint16_t canvas_struct_address,
                           uint16_t canvas_data_address,
                           uint8_t  canvas_plane,

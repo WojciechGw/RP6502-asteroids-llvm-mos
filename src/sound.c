@@ -34,7 +34,7 @@ void update_sound(void) {
 // --- Sound Effect Definitions ---
 
 void play_shoot_sound(void) {
-    ezpsg_play_note(c5,   // note
+    ezpsg_play_note(g5,   // note
                         3,    // duration
                         3,    // release
                         62,   // duty

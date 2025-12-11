@@ -7,7 +7,7 @@ add_executable(asteroids)
 rp6502_executable(asteroids)
 target_sources(asteroids PRIVATE
     src/colors.c
-    src/bitmap_graphics_db_gemini3.c
+    src/bitmap_graphics_db.c
     src/ezpsg.c
     src/sound.c
     src/main_claude.c

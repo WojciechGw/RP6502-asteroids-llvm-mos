@@ -24,16 +24,20 @@
 #define NUM_ROTATION_STEPS 64
 #define MAX_ASTEROIDS 8
 #define MAX_BULLETS 12
-#define BULLET_LIFETIME 100
+#define BULLET_LIFETIME 80
 #define SHIP_ACCEL 64
 #define SHIP_MAX_SPEED 512
 #define SHIP_FRICTION 2
 #define BULLET_SPEED 1800
-#define ASTEROID_SPEED_LARGE 700
-#define ASTEROID_SPEED_MEDIUM 900
-#define ASTEROID_SPEED_SMALL 1200
+#define ASTEROID_SPEED_LARGE 500
+#define ASTEROID_SPEED_MEDIUM 700
+#define ASTEROID_SPEED_SMALL 900
 #define ASTEROID_ROT_SPEED 1
 #define INVULNERABLE_TIME 90
+
+#define NUM_LARGE_SHAPES 3
+#define NUM_MEDIUM_SHAPES 3
+#define NUM_SMALL_SHAPES 3
 
 #define KEYBOARD_INPUT 0xFF10
 #define KEYBOARD_BYTES 32
@@ -65,19 +69,52 @@ const int8_t flame_shape[3][2] = {
     {-5, 3}, {-12, 0}, {-5, -3}
 };
 
-const int8_t asteroid_large[12][2] = {
-    {0, -16}, {10, -14}, {16, -6}, {14, 4}, {16, 12}, {6, 16},
-    {-4, 14}, {-12, 16}, {-16, 8}, {-16, -2}, {-10, -12}, {-2, -16}
+// Large asteroid shapes (4 variations)
+const int8_t asteroid_large_1[12][2] = {
+    {7, -15}, {-4, -11}, {-7, -15}, {-15, -7}, {-11, 0}, {-15, 8},
+    {-6, 15}, {0, 11}, {8, 15}, {16, 7}, {7, 4}, {15, -4}
 };
 
-const int8_t asteroid_medium[10][2] = {
-    {0, -10}, {7, -8}, {10, -2}, {8, 6}, {2, 10},
-    {-6, 10}, {-10, 4}, {-10, -4}, {-6, -10}, {-2, -10}
+const int8_t asteroid_large_2[12][2] = {
+    {5, 15}, {16, 8}, {16, 4}, {4, 0}, {15, -7}, {9, -15},
+    {3, -11}, {-7, -15}, {-14, -3}, {-14, 8}, {-2, 7}, {-6, 15}
 };
 
-const int8_t asteroid_small[8][2] = {
-    {0, -6}, {5, -4}, {6, 2}, {2, 6},
-    {-4, 6}, {-6, 2}, {-6, -2}, {-2, -6}
+const int8_t asteroid_large_3[10][2] = {
+    {1, 8}, {8, 15}, {16, 9}, {11, 1}, {16, -7}, {5, -15},
+    {-7, -15}, {-14, -9}, {-14, 8}, {-6, 15}
+};
+
+// Medium asteroid shapes (4 variations)
+const int8_t asteroid_medium_1[12][2] = {
+    {4, -8}, {-2, -6}, {-4, -8}, {-7, -4}, {-5, -1}, {-7, 4},
+    {-3, 7}, {0, 5}, {4, 7}, {8, 3}, {4, 1}, {8, -2}
+};
+
+const int8_t asteroid_medium_2[12][2] = {
+    {8, 2}, {2, 0}, {8, -4}, {5, -8}, {1, -5}, {-4, -8},
+    {-7, -2}, {-7, 4}, {-1, 3}, {-3, 7}, {3, 7}, {8, 4}
+};
+
+const int8_t asteroid_medium_3[10][2] = {
+    {8, 4}, {5, 0}, {8, -4}, {3, -8}, {-3, -8}, {-7, -5},
+    {-7, 4}, {-3, 7}, {0, 4}, {4, 7}
+};
+
+// Small asteroid shapes (4 variations)
+const int8_t asteroid_small_1[12][2] = {
+    {2, -3}, {-1, -2}, {-2, -3}, {-3, -2}, {-2, 0}, {-3, 2},
+    {-2, 3}, {0, 2}, {1, 3}, {3, 2}, {2, 0}, {3, -1}
+};
+
+const int8_t asteroid_small_2[12][2] = {
+    {2, 4}, {4, 2}, {4, 1}, {1, 0}, {4, -2}, {3, -4},
+    {1, -3}, {-1, -4}, {-3, -1}, {-3, 2}, {0, 2}, {-1, 4}
+};
+
+const int8_t asteroid_small_3[10][2] = {
+    {3, 0}, {4, -2}, {2, -4}, {-1, -4}, {-3, -2}, {-3, 2},
+    {-1, 4}, {0, 2}, {2, 4}, {4, 2}
 };
 
 typedef struct {
@@ -98,6 +135,7 @@ typedef struct {
     int32_t x, y;
     int32_t vx, vy;
     uint8_t size, angle, rot_speed;
+    uint8_t shape_index;  // New: which shape variation to use
     bool active;
 } Asteroid;
 
@@ -106,7 +144,7 @@ Bullet bullets[MAX_BULLETS];
 Asteroid asteroids[MAX_ASTEROIDS];
 
 uint16_t score = 0;
-uint8_t lives = 1;
+uint8_t lives = 3;
 uint8_t level = 1;
 uint8_t invulnerable_timer = 0;
 bool game_over = false;
@@ -127,7 +165,7 @@ void wrap_position(int32_t *x, int32_t *y) {
 
 void draw_rotated_polygon(const int8_t vertices[][2], uint8_t num_verts, 
                           int32_t x, int32_t y, uint8_t angle, uint16_t buffer) {
-    int16_t rotated_x[12], rotated_y[12];
+    int16_t rotated_x[13], rotated_y[13];
     
     int16_t sx = sin_table[angle];
     int16_t cx = cos_table[angle];
@@ -170,8 +208,19 @@ void spawn_asteroid(uint8_t size, int32_t x, int32_t y, int32_t vx, int32_t vy) 
             asteroids[i].size = size;
             asteroids[i].angle = rand() & 63;
             asteroids[i].rot_speed = rand() & ASTEROID_ROT_SPEED;
+            
+            // Randomly select a shape variation based on size
+            if (size == 0) {
+                // asteroids[i].shape_index = 0;
+                asteroids[i].shape_index = random(0, NUM_LARGE_SHAPES); 
+            } else if (size == 1) {
+                asteroids[i].shape_index = random(0, NUM_MEDIUM_SHAPES);
+            } else {
+                asteroids[i].shape_index = random(0, NUM_SMALL_SHAPES);
+            }
+            
             asteroids[i].active = true;
-            printf("rot speed: %i\n", asteroids[i].rot_speed);
+            printf("Spawning asteroid %u, size: %u, shape index: %u, x: %d, y: %d\n", i, size, asteroids[i].shape_index, (int)(x >> 8), (int)(y >> 8));
             return;
         }
     }
@@ -181,23 +230,42 @@ void init_level(void) {
     for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) {
         asteroids[i].active = false;
     }
+
+    for (uint8_t i = 0; i < MAX_BULLETS; i++) {
+        if (bullets[i].active) {
+            bullets[i].active = false;
+        }
+    }
     
     uint8_t num_asteroids = level + 1;
     if (num_asteroids > 4) num_asteroids = 4;
     
+    printf("Level %u: Spawning %u asteroids\n", level, num_asteroids);
+    
     for (uint8_t i = 0; i < num_asteroids; i++) {
         int32_t x, y;
-        do {
-            x = (int32_t)(rand() % SCREEN_WIDTH) << 8;
-            y = (int32_t)(rand() % SCREEN_HEIGHT) << 8;
-        } while (abs((int16_t)(x >> 8) - HALF_WIDTH) < 100 && 
-                 abs((int16_t)(y >> 8) - HALF_HEIGHT) < 100);
+        // do {
+            x = (int32_t)random(0, SCREEN_WIDTH) << 8;
+            // x = (int32_t)((uint16_t)rand() % SCREEN_WIDTH) << 8;
+            y = (int32_t)random(0, SCREEN_HEIGHT) << 8;
+            // y = (int32_t)((uint16_t)rand() % SCREEN_HEIGHT) << 8;
+        // } while (abs((int16_t)(x >> 8) - HALF_WIDTH) < 100 && 
+        //          abs((int16_t)(y >> 8) - HALF_HEIGHT) < 100);
         
         int32_t vx = (int32_t)((rand() % ASTEROID_SPEED_LARGE) - (ASTEROID_SPEED_LARGE >> 1));
         int32_t vy = (int32_t)((rand() % ASTEROID_SPEED_LARGE) - (ASTEROID_SPEED_LARGE >> 1));
         
         spawn_asteroid(0, x, y, vx, vy);
+        printf("Spawned asteroid %u at x=%d y=%d\n", i, (int)(x >> 8), (int)(y >> 8));
     }
+    
+    // Debug: Count active asteroids
+    uint8_t count = 0;
+    for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) {
+        if (asteroids[i].active) count++;
+    }
+    printf("Active asteroids after spawn: %u\n", count);
+    
     invulnerable_timer = INVULNERABLE_TIME;
 }
 
@@ -374,19 +442,68 @@ void draw_game(uint16_t buffer) {
         }
     }
     
+    // Debug: count and draw asteroids
+    uint8_t drawn_count = 0;
     for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) {
         if (asteroids[i].active) {
+            drawn_count++;
+            int16_t ax = (int16_t)(asteroids[i].x >> 8);
+            int16_t ay = (int16_t)(asteroids[i].y >> 8);
+            
             if (asteroids[i].size == 0) {
-                draw_rotated_polygon(asteroid_large, 12,
-                                   asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                // Large asteroids - 4 variations
+                switch (asteroids[i].shape_index) {
+                    case 0:
+                        draw_rotated_polygon(asteroid_large_1, 12,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                    case 1:
+                        draw_rotated_polygon(asteroid_large_2, 12,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                    case 2:
+                        draw_rotated_polygon(asteroid_large_3, 10,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                }
             } else if (asteroids[i].size == 1) {
-                draw_rotated_polygon(asteroid_medium, 10,
-                                   asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                // Medium asteroids - 4 variations
+                switch (asteroids[i].shape_index) {
+                    case 0:
+                        draw_rotated_polygon(asteroid_medium_1, 12,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                    case 1:
+                        draw_rotated_polygon(asteroid_medium_2, 12,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                    case 2:
+                        draw_rotated_polygon(asteroid_medium_3, 10,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                }
             } else {
-                draw_rotated_polygon(asteroid_small, 8,
-                                   asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                // Small asteroids - 4 variations
+                switch (asteroids[i].shape_index) {
+                    case 0:
+                        draw_rotated_polygon(asteroid_small_1, 12,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                    case 1:
+                        draw_rotated_polygon(asteroid_small_2, 12,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                    case 2:
+                        draw_rotated_polygon(asteroid_small_3, 10,
+                                           asteroids[i].x, asteroids[i].y, asteroids[i].angle, buffer);
+                        break;
+                }
             }
         }
+    }
+    
+    if (drawn_count > 0 && (frame_counter % 60) == 0) {
+        printf("Drew %u asteroids this frame\n", drawn_count);
     }
     
     set_cursor(10, 10);
@@ -472,9 +589,6 @@ int main(void) {
     erase_buffer(buffers[0]);
     erase_buffer(buffers[1]);
     
-    srand(12345);
-    init_ship();
-    init_level();
     
     for (uint8_t i = 0; i < MAX_BULLETS; i++) {
         bullets[i].active = false;
@@ -493,7 +607,9 @@ int main(void) {
     draw_string2buffer("Press SPACE", buffers[active_buffer]);
 
     bool waiting = true;
+    uint16_t seed = 0;
     while (waiting) {
+        seed++;
         read_keyboard();
         if (key(KEY_SPACE)) waiting = false;
     }
@@ -501,6 +617,10 @@ int main(void) {
     while (key(KEY_SPACE)) {
         read_keyboard();
     }
+
+    srand(seed);
+    init_ship();
+    init_level();
     
     bool running = true;
     bool fire_was_pressed = false;
