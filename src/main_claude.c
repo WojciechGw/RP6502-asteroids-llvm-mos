@@ -24,7 +24,7 @@
 #define NUM_ROTATION_STEPS 64
 #define MAX_ASTEROIDS 8
 #define MAX_BULLETS 12
-#define BULLET_LIFETIME 80
+#define BULLET_LIFETIME 40
 #define SHIP_ACCEL 64
 #define SHIP_MAX_SPEED 512
 #define SHIP_FRICTION 2
@@ -35,7 +35,7 @@
 #define ASTEROID_ROT_SPEED 1
 #define INVULNERABLE_TIME 90
 #define UFO_SPAWN_TIME 500
-#define UFO_SPEED 400
+#define UFO_SPEED 800
 #define UFO_SHOOT_INTERVAL 40
 
 
@@ -47,6 +47,8 @@
 #define KEYBOARD_BYTES 32
 uint8_t keystates[KEYBOARD_BYTES] = {0};
 #define key(code) (keystates[code >> 3] & (1 << (code & 7)))
+
+uint8_t scale = 80;
 
 uint16_t buffers[2];
 uint8_t active_buffer = 0;
@@ -170,6 +172,46 @@ uint16_t ufo_spawn_timer = 0;
 
 char text_buffer[24];
 
+InterpSoundHandle ufo_sound;
+
+// Pre-calculated scaled rotation coefficients
+int16_t scaled_sin[NUM_ROTATION_STEPS];
+int16_t scaled_cos[NUM_ROTATION_STEPS];
+
+void precalculate_rotation_tables() {
+    for (uint8_t angle = 0; angle < NUM_ROTATION_STEPS; angle++) {
+        scaled_sin[angle] = (sin_table[angle] * scale) / 100;
+        scaled_cos[angle] = (cos_table[angle] * scale) / 100;
+    }
+}
+
+void draw_rotated_polygon(const int8_t vertices[][2], uint8_t num_verts, 
+                          int32_t x, int32_t y, uint8_t angle, uint16_t buffer) {
+    int16_t rotated_x[13], rotated_y[13];
+    
+    // Pre-calculated scaled coefficients - no division!
+    int16_t sx = scaled_sin[angle];
+    int16_t cx = scaled_cos[angle];
+    
+    for (uint8_t i = 0; i < num_verts; i++) {
+        int8_t vx = vertices[i][0];
+        int8_t vy = vertices[i][1];
+        
+        // Direct rotation with pre-scaled coefficients
+        int16_t rx = ((int16_t)vx * cx - (int16_t)vy * sx) >> 8;
+        int16_t ry = ((int16_t)vx * sx + (int16_t)vy * cx) >> 8;
+        
+        rotated_x[i] = (int16_t)(x >> 8) + rx;
+        rotated_y[i] = (int16_t)(y >> 8) + ry;
+    }
+    
+    for (uint8_t i = 0; i < num_verts; i++) {
+        uint8_t next = (i + 1 < num_verts) ? (i + 1) : 0;
+        draw_line2buffer(WHITE, rotated_x[i], rotated_y[i], 
+                        rotated_x[next], rotated_y[next], buffer);
+    }
+}
+
 void wrap_position(int32_t *x, int32_t *y) {
     int32_t sw = (int32_t)SCREEN_WIDTH << 8;
     int32_t sh = (int32_t)SCREEN_HEIGHT << 8;
@@ -180,30 +222,61 @@ void wrap_position(int32_t *x, int32_t *y) {
     if (*y >= sh) *y -= sh;
 }
 
-void draw_rotated_polygon(const int8_t vertices[][2], uint8_t num_verts, 
-                          int32_t x, int32_t y, uint8_t angle, uint16_t buffer) {
-    int16_t rotated_x[13], rotated_y[13];
+
+// void draw_rotated_polygon(const int8_t vertices[][2], uint8_t num_verts, 
+//                           int32_t x, int32_t y, uint8_t angle, uint16_t buffer) {
+//     int16_t rotated_x[13], rotated_y[13];
     
-    int16_t sx = sin_table[angle];
-    int16_t cx = cos_table[angle];
+//     int16_t sx = sin_table[angle];
+//     int16_t cx = cos_table[angle];
     
-    for (uint8_t i = 0; i < num_verts; i++) {
-        int8_t vx = vertices[i][0];
-        int8_t vy = vertices[i][1];
+//     for (uint8_t i = 0; i < num_verts; i++) {
+//         int8_t vx = vertices[i][0];
+//         int8_t vy = vertices[i][1];
         
-        int16_t rx = ((int16_t)vx * cx - (int16_t)vy * sx) >> 8;
-        int16_t ry = ((int16_t)vx * sx + (int16_t)vy * cx) >> 8;
+//         // Apply scaling first (scale/100, so multiply by scale and divide by 100)
+//         int16_t scaled_vx = ((int16_t)vx * scale) / 100;
+//         int16_t scaled_vy = ((int16_t)vy * scale) / 100;
         
-        rotated_x[i] = (int16_t)(x >> 8) + rx;
-        rotated_y[i] = (int16_t)(y >> 8) + ry;
-    }
+//         // Then apply rotation
+//         int16_t rx = (scaled_vx * cx - scaled_vy * sx) >> 8;
+//         int16_t ry = (scaled_vx * sx + scaled_vy * cx) >> 8;
+        
+//         rotated_x[i] = (int16_t)(x >> 8) + rx;
+//         rotated_y[i] = (int16_t)(y >> 8) + ry;
+//     }
     
-    for (uint8_t i = 0; i < num_verts; i++) {
-        uint8_t next = (i + 1) % num_verts;
-        draw_line2buffer(WHITE, rotated_x[i], rotated_y[i], 
-                        rotated_x[next], rotated_y[next], buffer);
-    }
-}
+//     for (uint8_t i = 0; i < num_verts; i++) {
+//         uint8_t next = (i + 1) % num_verts;
+//         draw_line2buffer(WHITE, rotated_x[i], rotated_y[i], 
+//                         rotated_x[next], rotated_y[next], buffer);
+//     }
+// }
+
+// void draw_rotated_polygon(const int8_t vertices[][2], uint8_t num_verts, 
+//                           int32_t x, int32_t y, uint8_t angle, uint16_t buffer) {
+//     int16_t rotated_x[13], rotated_y[13];
+    
+//     int16_t sx = sin_table[angle];
+//     int16_t cx = cos_table[angle];
+    
+//     for (uint8_t i = 0; i < num_verts; i++) {
+//         int8_t vx = vertices[i][0];
+//         int8_t vy = vertices[i][1];
+        
+//         int16_t rx = ((int16_t)vx * cx - (int16_t)vy * sx) >> 8;
+//         int16_t ry = ((int16_t)vx * sx + (int16_t)vy * cx) >> 8;
+        
+//         rotated_x[i] = (int16_t)(x >> 8) + rx;
+//         rotated_y[i] = (int16_t)(y >> 8) + ry;
+//     }
+    
+//     for (uint8_t i = 0; i < num_verts; i++) {
+//         uint8_t next = (i + 1) % num_verts;
+//         draw_line2buffer(WHITE, rotated_x[i], rotated_y[i], 
+//                         rotated_x[next], rotated_y[next], buffer);
+//     }
+// }
 
 void init_ship(void) {
     ship.x = (int32_t)HALF_WIDTH << 8;
@@ -254,7 +327,7 @@ void init_level(void) {
         }
     }
     
-    ufo.active = false; ufo_spawn_timer = 50;
+    ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME;
 
     uint8_t num_asteroids = level + 1;
     if (num_asteroids > 4) num_asteroids = 4;
@@ -303,7 +376,8 @@ void fire_bullet(void) {
             bullets[i].active = true;
             
             // SOUND: Play shoot sound
-            play_shoot_sound();
+            // play_shoot_sound();
+            start_bullet_sound();
             return;
         }
     }
@@ -317,7 +391,8 @@ void spawn_ufo(void) {
     ufo.vx = (ufo.x == 20) ? UFO_SPEED : -UFO_SPEED; ufo.vy = ((rand() % 50) - 25);
     ufo.shoot_timer = UFO_SHOOT_INTERVAL; ufo.active = true;
     printf("Spawning UFO x: %d, y: %d, speed: %d\n", (int)(ufo.x >> 8), (int)(ufo.y >> 8), (int)(ufo.vx >> 8));
-    play_ufo_sound();
+    // play_ufo_sound();
+    ufo_sound = start_ufo_sound();
 }
 
 void ufo_fire_bullet(void) {
@@ -335,24 +410,41 @@ void ufo_fire_bullet(void) {
             ufo_bullets[i].lifetime = BULLET_LIFETIME; ufo_bullets[i].active = true;
             // printf("ufo x: %d, ufo.y: %d, b.x: %d, b.y: %d, dx: %d, dy: %d \n", (int)(ufo.x >>8), (int)(ufo.y >> 8), (int)(bullets[i].x >>8), (int)(bullets[i].y >> 8), dx, dy);
             // printf("mag: %d, active: %i \n", mag, bullets[i].active);
-            play_shoot_sound(); return;
+            start_bullet_sound(); return;
         }
     }
 }
 
 bool check_collision(int32_t x1, int32_t y1, uint8_t r1,
                      int32_t x2, int32_t y2, uint8_t r2) {
+    // Fast rejection test first
     int16_t dx = (int16_t)(x1 >> 8) - (int16_t)(x2 >> 8);
     int16_t dy = (int16_t)(y1 >> 8) - (int16_t)(y2 >> 8);
-    uint8_t sum_r = r1 + r2;
     
+    // Use abs for quick rejection (cheaper than multiply)
+    uint8_t sum_r = r1 + r2;
     if (abs(dx) > sum_r || abs(dy) > sum_r) return false;
     
+    // Only do expensive multiply if we passed the quick test
     int16_t dist_sq = (dx * dx) + (dy * dy);
     int16_t r_sq = sum_r * sum_r;
     
     return dist_sq < r_sq;
 }
+
+// bool check_collision(int32_t x1, int32_t y1, uint8_t r1,
+//                      int32_t x2, int32_t y2, uint8_t r2) {
+//     int16_t dx = (int16_t)(x1 >> 8) - (int16_t)(x2 >> 8);
+//     int16_t dy = (int16_t)(y1 >> 8) - (int16_t)(y2 >> 8);
+//     uint8_t sum_r = r1 + r2;
+    
+//     if (abs(dx) > sum_r || abs(dy) > sum_r) return false;
+    
+//     int16_t dist_sq = (dx * dx) + (dy * dy);
+//     int16_t r_sq = sum_r * sum_r;
+    
+//     return dist_sq < r_sq;
+// }
 
 void update_game(void) {
     if (game_over) return;
@@ -361,7 +453,22 @@ void update_game(void) {
     if (invulnerable_timer > 0) invulnerable_timer--;
 
     uint8_t asteroid_count = 0;
-    for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) if (asteroids[i].active) asteroid_count++;
+    for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) {
+        if (asteroids[i].active) {
+            switch (asteroids[i].size)
+            {
+            case 0:
+                asteroid_count += 8;
+                break;
+            case 1:
+                asteroid_count += 4;
+                break;
+            default:
+                asteroid_count++;
+                break;
+            }
+        }
+    }
     update_beat_sound(asteroid_count);
 
     if (!ufo.active && ufo_spawn_timer > 0) { ufo_spawn_timer--; if (ufo_spawn_timer == 0) spawn_ufo(); }
@@ -373,10 +480,10 @@ void update_game(void) {
             // printf("hide ufo \n");
             ufo.active = false; 
             ufo_spawn_timer = UFO_SPAWN_TIME; 
-            stop_ufo_sound(); 
+            // stop_ufo_sound(); 
+            stop_interpolated_sound(ufo_sound);
         }
         if (ufo.active && ship.active) { ufo.shoot_timer--; if (ufo.shoot_timer == 0) { ufo_fire_bullet(); ufo.shoot_timer = UFO_SHOOT_INTERVAL; } }
-        // printf("ufo shoot timer: %d\n", ufo.shoot_timer);
     }
     
     if (ship.active) {
@@ -425,6 +532,8 @@ void update_game(void) {
     
     for (uint8_t i = 0; i < MAX_BULLETS; i++) {
         if (!bullets[i].active) continue;
+
+        bool hit = false;  // Track if bullet hit something
         
         for (uint8_t j = 0; j < MAX_ASTEROIDS; j++) {
             if (!asteroids[j].active) continue;
@@ -456,13 +565,14 @@ void update_game(void) {
                     int16_t vy2 = ((rand() % speed) - (speed >> 1));
                     spawn_asteroid(new_size, asteroids[j].x, asteroids[j].y, vx2, vy2);
                 }
+                hit = true;
                 break;
             }
         }
-        if (ufo.active && bullets[i].active) {
+        if (!hit && ufo.active && bullets[i].active) {
             if (check_collision(bullets[i].x, bullets[i].y, 1, ufo.x, ufo.y, 12)) {
                 bullets[i].active = false; ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME;
-                play_explosion_sound(0); stop_ufo_sound(); score += 200;
+                play_explosion_sound(0); stop_interpolated_sound(ufo_sound); score += 200;
             }
         }
     }
@@ -486,7 +596,7 @@ void update_game(void) {
                 
                 if (lives == 0) {
                     game_over = true;
-                    play_game_over_sound();
+                    start_game_over_sound();
                 } else {
                     init_ship();
                 }
@@ -498,13 +608,13 @@ void update_game(void) {
             if (check_collision(ufo_bullets[i].x, ufo_bullets[i].y, 1, ship.x, ship.y, 8)) {
                 bullets[i].active = false; ship.active = false; lives--; 
                 play_explosion_sound(0); 
-                if (lives == 0) { game_over = true; play_game_over_sound(); } else init_ship();
+                if (lives == 0) { game_over = true; start_game_over_sound(); } else init_ship();
             }
         }
         if (ufo.active && check_collision(ship.x, ship.y, 8, ufo.x, ufo.y, 12)) {
             ship.active = false; ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME; lives--;
-            play_explosion_sound(0); stop_ufo_sound();
-            if (lives == 0) { game_over = true; play_game_over_sound(); } else init_ship();
+            play_explosion_sound(0); stop_interpolated_sound(ufo_sound);
+            if (lives == 0) { game_over = true; start_game_over_sound(); } else init_ship();
         }
     }
     
@@ -641,58 +751,14 @@ void read_keyboard(void) {
     }
 }
 
-/* quick test - call from main after init_sound() */
-void test_waveforms(void) {
-    printf("test_waveforms\n");
-    // Square tone (should be audible)
-    uint16_t x = ezpsg_play_note(
-        c6,    // note
-        30,    // duration
-        30,    // release
-        0xFF,  // duty
-        0xF0,  // vol_attack
-        0x90,  // vol_decay
-        EZPSG_WAVE_SQUARE,
-        EZPSG_PAN_CENTER
-    );
-    if (x != 0xFFFF) {
-        RIA.addr0 = x + 5;   // wave_release is the 6th byte in struct (0..5): freq lo, hi, duty, vol_attack, vol_decay, wave_release
-        RIA.step0 = 0;
-        uint8_t val = RIA.rw0;
-        printf("square val: %i\n", val);
-        printf("psg base = %04x\n", x);
-    }
-
-    // small delay (let the tick call advance a bit)
-    for (int i = 0; i < 60; ++i) ezpsg_tick(1);
-
-    // Noise (should be audible if waveform defined correctly)
-    x = ezpsg_play_note(
-        c6,
-        30,
-        30,
-        0xFF,
-        0xF0,
-        0x90,
-        EZPSG_WAVE_NOISE,
-        EZPSG_PAN_CENTER
-    );
-    if (x != 0xFFFF) {
-        RIA.addr0 = x + 5;   // wave_release is the 6th byte in struct (0..5): freq lo, hi, duty, vol_attack, vol_decay, wave_release
-        RIA.step0 = 0;
-        uint8_t val = RIA.rw0;
-        printf("noise val: %i\n", val);
-        printf("psg base = %04x\n", x);
-    }
-}
-
 
 int main(void) {
     buffers[0] = 0x0000;
     buffers[1] = 0x7080;
     
     init_bitmap_graphics(0xFF00, buffers[0], 0, 4, SCREEN_WIDTH, SCREEN_HEIGHT, 1);
-    
+
+    precalculate_rotation_tables(); 
     // SOUND: Initialize sound system
     init_sound();
     // test_waveforms();
@@ -735,6 +801,7 @@ int main(void) {
     
     bool running = true;
     bool fire_was_pressed = false;
+
 
     uint8_t v; // vsync counter, incements every 1/60 second, rolls over every 256
     // vsync loop
