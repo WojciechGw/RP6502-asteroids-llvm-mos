@@ -13,3 +13,6 @@ target_sources(asteroids PRIVATE
     src/ezpsg.c
     # src/psg_sound_tester.c
 )
+
+set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "Flags used by the C compiler for Release builds." FORCE)
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "Flags used by the C++ compiler for Release builds." FORCE)

@@ -201,14 +201,14 @@ InterpSoundHandle start_game_over_sound(void) {
 }
 
 // Example usage - One-shot falling whistle
-InterpSoundHandle start_bullet_sound(void) {
+InterpSoundHandle start_bullet_sound(int8_t pan) {
     return start_interpolated_sound(
         g5, g4,           // High to low
-        0xFF, 0xFF,       // Constant duty
+        0x1F, 0x1F,       // Constant duty
         0xA0, 0x40,       // Decreasing volume
         0xA0, 0xA0,
         0x38, 0x38,
-        EZPSG_PAN_CENTER, EZPSG_PAN_CENTER,
+        pan, pan,
         1,                // Short notes
         5,                // Long release
         4,                // Smooth sweep
@@ -247,7 +247,7 @@ void play_shoot_sound(void) {
     
 }
 
-void play_explosion_sound(uint8_t size) {
+void play_explosion_sound(uint8_t size, int8_t pan) {
     ezpsg_play_note(c1 + (size * 1),  // note
                         3 - size,    // duration
                         0,    // release
@@ -255,7 +255,7 @@ void play_explosion_sound(uint8_t size) {
                         0x07, // vol_attack
                         0x0B, // vol_decay
                         0x09,
-                        0);   // pan
+                        pan);   // pan
  
 }
 
@@ -294,67 +294,6 @@ void stop_thrust_sound(void) {
     is_thrust_playing = false;
 }
 
-// // Start UFO sound (continuous warbling)
-// void play_ufo_sound(void) {
-//     if (!ufo_sound.active) {
-//         ufo_sound.psg_addr = ezpsg_play_note(
-//             c5,           // Mid-range warble
-//             255,          // Long duration
-//             10,           // Quick release
-//             0xFF,         // Square wave
-//             0x60,         // Medium volume
-//             0x50,         // Sustain
-//             EZPSG_WAVE_SQUARE,
-//             EZPSG_PAN_CENTER
-//         );
-//         ufo_sound.active = true;
-//         ufo_sound.frame_counter = 0;
-//     }
-// }
-
-// // Stop UFO sound
-// void stop_ufo_sound(void) {
-//     if (ufo_sound.active) {
-//         if (ufo_sound.psg_addr != 0xFFFF) {
-//             uint8_t pan_gate;
-//             RIA.addr0 = thrust_channel_xaddr + 6; // Offset 6 is pan_gate in the struct
-//             RIA.step0 = 0;
-//             pan_gate = RIA.rw0;
-//             if ((pan_gate & 0x01) == 0) { // If gate bit is 0, sound is off
-//                 is_thrust_playing = false;
-//             }
-//         }
-//         ufo_sound.psg_addr = 0xFFFF;
-//         ufo_sound.active = false;
-//     }
-// }
-
-// // Update UFO warble effect
-// void update_ufo_warble(void) {
-//     if (ufo_sound.active && ufo_sound.psg_addr != 0xFFFF) {
-//         ufo_sound.frame_counter++;
-        
-//         // Alternate between two pitches every 15 frames
-//         if ((ufo_sound.frame_counter % 15) == 0) {
-//             stop_ufo_sound();
-            
-//             // Alternate between c5 and d5
-//             uint16_t note = ((ufo_sound.frame_counter / 15) & 1) ? d5 : c5;
-            
-//             ufo_sound.psg_addr = ezpsg_play_note(
-//                 note,
-//                 255,
-//                 10,
-//                 0x00,
-//                 0x20,
-//                 0x50,
-//                 EZPSG_WAVE_SQUARE,
-//                 EZPSG_PAN_CENTER
-//             );
-//         }
-//     }
-// }
-
 // Update beat sound based on remaining asteroids
 // Fewer asteroids = faster beat
 void update_beat_sound(uint8_t asteroid_count) {
@@ -389,7 +328,7 @@ void update_beat_sound(uint8_t asteroid_count) {
                 0xA0,     // Moderate volume
                 0x00,     // Sustain
                 EZPSG_WAVE_SINE,
-                EZPSG_PAN_CENTER
+                -60
             );
         } else {
             ezpsg_play_note(
@@ -400,7 +339,7 @@ void update_beat_sound(uint8_t asteroid_count) {
                 0xA0,     // Moderate volume
                 0x40,     // Sustain
                 EZPSG_WAVE_SINE,
-                EZPSG_PAN_CENTER
+                60
             );
         }
         

@@ -10,9 +10,9 @@
 
 
 // Panning
-#define EZPSG_PAN_LEFT    0x80
-#define EZPSG_PAN_RIGHT   0x40
-#define EZPSG_PAN_CENTER  0xC0 // Both left and right
+#define EZPSG_PAN_LEFT    -63
+#define EZPSG_PAN_RIGHT   63
+#define EZPSG_PAN_CENTER  0 // Both left and right
 
 #define MAX_INTERPOLATED_SOUNDS 4
 
@@ -35,7 +35,7 @@ void init_sound(void);
 void update_sound(void);
 
 void play_shoot_sound(void);
-void play_explosion_sound(uint8_t size);
+void play_explosion_sound(uint8_t size, int8_t pan);
 void play_game_over_sound(void);
 
 // Split into two functions for continuous sounds
@@ -49,7 +49,7 @@ void stop_ufo_sound(void);
 InterpSoundHandle start_game_over_sound(void);
 
 // Example usage - One-shot falling whistle
-InterpSoundHandle start_bullet_sound(void);
+InterpSoundHandle start_bullet_sound(int8_t pan);
 
 // Example usage - Looping siren effect with panning
 InterpSoundHandle start_ufo_sound(void);
