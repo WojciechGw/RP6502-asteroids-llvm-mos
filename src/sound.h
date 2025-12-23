@@ -39,7 +39,7 @@ void play_explosion_sound(uint8_t size, int8_t pan);
 void play_game_over_sound(void);
 
 // Split into two functions for continuous sounds
-void start_thrust_sound(void);
+void start_thrust_sound(int8_t pan);
 void stop_thrust_sound(void);
 
 void update_beat_sound(uint8_t asteroid_count); 

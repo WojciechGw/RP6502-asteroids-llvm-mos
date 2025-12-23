@@ -9,7 +9,7 @@ target_sources(asteroids PRIVATE
     src/colors.c
     src/bitmap_graphics_db.c
     src/sound.c
-    src/main_claude.c
+    src/main.c
     src/ezpsg.c
     # src/psg_sound_tester.c
 )

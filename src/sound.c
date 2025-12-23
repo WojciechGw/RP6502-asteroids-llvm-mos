@@ -187,15 +187,15 @@ void update_interpolated_sounds(void) {
 // Example usage - Looping alarm sound (plays continuously in background)
 InterpSoundHandle start_game_over_sound(void) {
     return start_interpolated_sound(
-        c5, c3,           // Start note, End note (sweep up 2 octaves)
+        c5, c2,           // Start note, End note (sweep up 2 octaves)
         0x80, 0xFF,       // Start duty, End duty
         0x40, 0xC0,       // Start vol_attack, End vol_attack (getting louder)
         0x40, 0xC0,       // Start vol_decay, End vol_decay
         EZPSG_WAVE_SQUARE, EZPSG_WAVE_SQUARE,  // Wave (constant)
         0, 0,             // Pan (center)
-        2,                // Duration per note (frames)
+        1,                // Duration per note (frames)
         10,               // Release on final note
-        12,               // Number of steps
+        20,               // Number of steps
         false              // Loop continuously
     );
 }
@@ -218,7 +218,6 @@ InterpSoundHandle start_bullet_sound(int8_t pan) {
 
 // Example usage - Looping siren effect with panning
 InterpSoundHandle start_ufo_sound(void) {
-    printf("start_ufo_sound\n");
     return start_interpolated_sound(
         g5, g4,           // High to low
         0xFF, 0xFF,       // Constant duty
@@ -248,41 +247,40 @@ void play_shoot_sound(void) {
 }
 
 void play_explosion_sound(uint8_t size, int8_t pan) {
-    ezpsg_play_note(c1 + (size * 1),  // note
-                        3 - size,    // duration
+    ezpsg_play_note(fs1 + (size * 1),  // note
+                        5,    // duration
                         0,    // release
-                        145,   // duty
-                        0x07, // vol_attack
-                        0x0B, // vol_decay
-                        0x09,
+                        35,   // duty
+                        0x03, // vol_attack
+                        0x0F, // vol_decay
+                        0x49 - size,
                         pan);   // pan
- 
 }
 
 void play_game_over_sound(void) {
     ezpsg_play_note(
-        g3,               // note: A medium-low G
-        3,               // duration: Long hold
-        3,               // release: Long fade
-        0xFF,             // duty (square wave)
-        0xD0,             // vol_attack: Soft attack
-        0x90,             // vol_decay: Slow decay
-        EZPSG_WAVE_SQUARE,
+        fs1,               // note: A medium-low G
+        10,               // duration: Long hold
+        5,               // release: Long fade
+        88,             // duty (square wave)
+        0x01,             // vol_attack: Soft attack
+        0xF9,             // vol_decay: Slow decay
+        0x1C,
         0
     );
 }
 
-void start_thrust_sound(void) {
+void start_thrust_sound(int8_t pan) {
     if (!is_thrust_playing) {
         thrust_channel_xaddr = ezpsg_play_note(
-            c1,  
+            as0,  
             10,  
             10,  
-            200, 
-            0x90,
-            0x00,
-            0x12, 
-            0); 
+            205, 
+            0x37,
+            0xFC,
+            0x46, 
+            pan); 
   
         if (thrust_channel_xaddr != 0xFFFF) {
             is_thrust_playing = true;
@@ -298,7 +296,7 @@ void stop_thrust_sound(void) {
 // Fewer asteroids = faster beat
 void update_beat_sound(uint8_t asteroid_count) {
     // Calculate beat interval based on asteroid count
-    // More asteroids = slower beat (60 frames), fewer = faster (15 frames)
+    // More asteroids = slower beat (40 frames), fewer = faster (5 frames)
     if (asteroid_count >= 16) {
         beat_interval = 40;
     } else if (asteroid_count >= 12) {
@@ -307,8 +305,10 @@ void update_beat_sound(uint8_t asteroid_count) {
         beat_interval = 20;
     } else if (asteroid_count >= 4) {
         beat_interval = 15;
+    } else if (asteroid_count >= 2) {
+        beat_interval = 10;
     } else if (asteroid_count == 1) {
-        beat_interval = 20;
+        beat_interval = 8;
     } else {
         beat_interval = 40;  // No asteroids, slow down
         return;  // Don't play beat if no asteroids

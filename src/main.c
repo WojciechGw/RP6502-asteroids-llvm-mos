@@ -159,6 +159,18 @@ typedef struct {
     bool active; 
 } Particle;
 
+#define MAX_SHIP_DEBRIS 4
+typedef struct {
+    int32_t x, y;        // Center position of the line
+    int32_t vx, vy;      // Velocity
+    uint8_t angle;       // Rotation of the line itself
+    int8_t rot_speed;    // How fast the line spins
+    uint8_t lifetime;    // Fade out timer
+    bool active;
+} DebrisLine;
+
+DebrisLine ship_debris[MAX_SHIP_DEBRIS];
+
 
 Ship ship;
 Bullet bullets[MAX_BULLETS];
@@ -176,6 +188,7 @@ bool game_over = false;
 bool thrust_on = false;
 uint8_t frame_counter = 0;
 uint16_t ufo_spawn_timer = 0;
+int8_t pan;
 
 char text_buffer[24];
 
@@ -200,33 +213,29 @@ void precalculate_rotation_tables() {
  * @return An int8_t value mapped to the range [-63, 63].
  */
 int8_t convert_pos_to_pan(int32_t fixed_pos_24_8) {
-    // Step 1: Get the integer part from the 24.8 fixed-point number.
-    // A right shift by 8 is equivalent to dividing by 256.
     int16_t integer_pos = (int16_t)(fixed_pos_24_8 >> 8);
-
-    // --- Optional but Recommended: Clamp the input value ---
-    // This makes the function robust if the input ever goes out of bounds.
     if (integer_pos < 0)   integer_pos = 0;
     if (integer_pos > 640) integer_pos = 640;
-    // ---------------------------------------------------------
-
-    // Step 2: Scale the value.
-    // We need to map the input range [0, 640] to the output range width [0, 126].
-    // The formula is: scaled = val * (output_range / input_range)
-    // scaled = integer_pos * (126 / 640)
-    
-    // To do this with integer math and preserve precision, we multiply first, then divide.
-    // We use a 32-bit intermediate for the multiplication to prevent overflow.
-    // (640 * 126 = 80640, which would overflow a 16-bit integer).
-    // We can also simplify the fraction 126/640 to 63/320.
     int32_t scaled_val = ((int32_t)integer_pos * 63) / 320;
-
-    // Step 3: Shift the range.
-    // The value is now in the range [0, 126]. We need to shift it to [-63, 63].
-    // We do this by subtracting the midpoint (63).
     int8_t final_val = (int8_t)(scaled_val - 63);
 
     return final_val;
+}
+
+void spawn_ship_shatter(void) {
+    for (uint8_t i = 0; i < MAX_SHIP_DEBRIS; i++) {
+        ship_debris[i].x = ship.x;
+        ship_debris[i].y = ship.y;
+        
+        ship_debris[i].vx = (ship.vx / 2) + ((rand() % 400) - 200);
+        ship_debris[i].vy = (ship.vy / 2) + ((rand() % 400) - 200);
+        
+        ship_debris[i].angle = ship.angle;
+        ship_debris[i].rot_speed = (rand() % 5) - 2; 
+        ship_debris[i].lifetime = 30; 
+        ship_debris[i].active = true;
+    }
+    ship.active = false; 
 }
 
 void spawn_particles(int32_t x, int32_t y, uint8_t count) {
@@ -249,7 +258,6 @@ void draw_rotated_polygon(const int8_t vertices[][2], uint8_t num_verts,
                           int32_t x, int32_t y, uint8_t angle, uint16_t buffer) {
     int16_t rotated_x[13], rotated_y[13];
     
-    // Pre-calculated scaled coefficients - no division!
     int16_t sx = scaled_sin[angle];
     int16_t cx = scaled_cos[angle];
     
@@ -257,7 +265,6 @@ void draw_rotated_polygon(const int8_t vertices[][2], uint8_t num_verts,
         int8_t vx = vertices[i][0];
         int8_t vy = vertices[i][1];
         
-        // Direct rotation with pre-scaled coefficients
         int16_t rx = ((int16_t)vx * cx - (int16_t)vy * sx) >> 8;
         int16_t ry = ((int16_t)vx * sx + (int16_t)vy * cx) >> 8;
         
@@ -303,9 +310,7 @@ void spawn_asteroid(uint8_t size, int32_t x, int32_t y, int32_t vx, int32_t vy) 
             asteroids[i].angle = rand() & 63;
             asteroids[i].rot_speed = rand() & ASTEROID_ROT_SPEED;
             
-            // Randomly select a shape variation based on size
             if (size == 0) {
-                // asteroids[i].shape_index = 0;
                 asteroids[i].shape_index = random(0, NUM_LARGE_SHAPES); 
             } else if (size == 1) {
                 asteroids[i].shape_index = random(0, NUM_MEDIUM_SHAPES);
@@ -314,7 +319,6 @@ void spawn_asteroid(uint8_t size, int32_t x, int32_t y, int32_t vx, int32_t vy) 
             }
             
             asteroids[i].active = true;
-            printf("Spawning asteroid %u, size: %u, shape index: %u, x: %d, y: %d\n", i, size, asteroids[i].shape_index, (int)(x >> 8), (int)(y >> 8));
             return;
         }
     }
@@ -332,35 +336,26 @@ void init_level(void) {
     }
     
     ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME;
+    stop_interpolated_sound(ufo_sound);
 
     uint8_t num_asteroids = level + 1;
     if (num_asteroids > 4) num_asteroids = 4;
     
-    printf("Level %u: Spawning %u asteroids\n", level, num_asteroids);
-    
     for (uint8_t i = 0; i < num_asteroids; i++) {
         int32_t x, y;
-        // do {
-            x = (int32_t)random(0, SCREEN_WIDTH) << 8;
-            // x = (int32_t)((uint16_t)rand() % SCREEN_WIDTH) << 8;
-            y = (int32_t)random(0, SCREEN_HEIGHT) << 8;
-            // y = (int32_t)((uint16_t)rand() % SCREEN_HEIGHT) << 8;
-        // } while (abs((int16_t)(x >> 8) - HALF_WIDTH) < 100 && 
-        //          abs((int16_t)(y >> 8) - HALF_HEIGHT) < 100);
+        x = (int32_t)random(0, SCREEN_WIDTH) << 8;
+        y = (int32_t)random(0, SCREEN_HEIGHT) << 8;
         
         int32_t vx = (int32_t)((rand() % ASTEROID_SPEED_LARGE) - (ASTEROID_SPEED_LARGE >> 1));
         int32_t vy = (int32_t)((rand() % ASTEROID_SPEED_LARGE) - (ASTEROID_SPEED_LARGE >> 1));
         
         spawn_asteroid(0, x, y, vx, vy);
-        printf("Spawned asteroid %u at x=%d y=%d\n", i, (int)(x >> 8), (int)(y >> 8));
     }
     
-    // Debug: Count active asteroids
     uint8_t count = 0;
     for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) {
         if (asteroids[i].active) count++;
     }
-    printf("Active asteroids after spawn: %u\n", count);
     
     invulnerable_timer = INVULNERABLE_TIME;
 }
@@ -379,9 +374,7 @@ void fire_bullet(void) {
             bullets[i].lifetime = BULLET_LIFETIME;
             bullets[i].active = true;
             
-            // SOUND: Play shoot sound
-            // play_shoot_sound();
-            int8_t pan = convert_pos_to_pan(ship.x);
+            pan = convert_pos_to_pan(ship.x);
             start_bullet_sound(pan);
             return;
         }
@@ -395,13 +388,10 @@ void spawn_ufo(void) {
     ufo.y = (int32_t)random(50, SCREEN_HEIGHT - 50) << 8;
     ufo.vx = (ufo.x == 20) ? UFO_SPEED : -UFO_SPEED; ufo.vy = ((rand() % 50) - 25);
     ufo.shoot_timer = UFO_SHOOT_INTERVAL; ufo.active = true;
-    printf("Spawning UFO x: %d, y: %d, speed: %d\n", (int)(ufo.x >> 8), (int)(ufo.y >> 8), (int)(ufo.vx >> 8));
-    // play_ufo_sound();
     ufo_sound = start_ufo_sound();
 }
 
 void ufo_fire_bullet(void) {
-    printf("ufo_fire_bullet \n");
     for (uint8_t i = 0; i < MAX_BULLETS; i++) {
         if (!ufo_bullets[i].active) {
             int16_t dx = (int16_t)(ship.x >> 8) - (int16_t)(ufo.x >> 8);
@@ -413,9 +403,7 @@ void ufo_fire_bullet(void) {
             ufo_bullets[i].x = ufo.x + ufo_bullets[i].vx; 
             ufo_bullets[i].y = ufo.y + ufo_bullets[i].vy;
             ufo_bullets[i].lifetime = BULLET_LIFETIME; ufo_bullets[i].active = true;
-            // printf("ufo x: %d, ufo.y: %d, b.x: %d, b.y: %d, dx: %d, dy: %d \n", (int)(ufo.x >>8), (int)(ufo.y >> 8), (int)(bullets[i].x >>8), (int)(bullets[i].y >> 8), dx, dy);
-            // printf("mag: %d, active: %i \n", mag, bullets[i].active);
-            int8_t pan = convert_pos_to_pan(ship.x);
+            pan = convert_pos_to_pan(ship.x);
             start_bullet_sound(pan);
             return;
         }
@@ -424,15 +412,13 @@ void ufo_fire_bullet(void) {
 
 bool check_collision(int32_t x1, int32_t y1, uint8_t r1,
                      int32_t x2, int32_t y2, uint8_t r2) {
-    // Fast rejection test first
+    
     int16_t dx = (int16_t)(x1 >> 8) - (int16_t)(x2 >> 8);
     int16_t dy = (int16_t)(y1 >> 8) - (int16_t)(y2 >> 8);
     
-    // Use abs for quick rejection (cheaper than multiply)
     uint8_t sum_r = r1 + r2;
     if (abs(dx) > sum_r || abs(dy) > sum_r) return false;
     
-    // Only do expensive multiply if we passed the quick test
     int16_t dist_sq = (dx * dx) + (dy * dy);
     int16_t r_sq = sum_r * sum_r;
     
@@ -468,12 +454,9 @@ void update_game(void) {
     if (ufo.active) {
         ufo.x += ufo.vx; ufo.y += ufo.vy; wrap_position(&ufo.x, &ufo.y);
         int16_t ux = (int16_t)(ufo.x >> 8);
-        // printf("ufo x: %d  ", ux); 
         if ((ux < -20) || (ux > SCREEN_WIDTH + 20)) { 
-            // printf("hide ufo \n");
             ufo.active = false; 
             ufo_spawn_timer = UFO_SPAWN_TIME; 
-            // stop_ufo_sound(); 
             stop_interpolated_sound(ufo_sound);
         }
         if (ufo.active && ship.active) { ufo.shoot_timer--; if (ufo.shoot_timer == 0) { ufo_fire_bullet(); ufo.shoot_timer = UFO_SHOOT_INTERVAL; } }
@@ -534,7 +517,7 @@ void update_game(void) {
     for (uint8_t i = 0; i < MAX_BULLETS; i++) {
         if (!bullets[i].active) continue;
 
-        bool hit = false;  // Track if bullet hit something
+        bool hit = false;  
         
         for (uint8_t j = 0; j < MAX_ASTEROIDS; j++) {
             if (!asteroids[j].active) continue;
@@ -549,8 +532,7 @@ void update_game(void) {
 
                 uint8_t pc = (asteroids[j].size == 0) ? 8 : (asteroids[j].size == 1) ? 6 : 4;
                 spawn_particles(asteroids[j].x, asteroids[j].y, pc);
-                // SOUND: Play explosion based on asteroid size
-                int8_t pan = convert_pos_to_pan(asteroids[i].x);
+                pan = convert_pos_to_pan(asteroids[i].x);
                 play_explosion_sound(asteroids[j].size, pan);
                 
                 if (asteroids[j].size == 0) score += 20;
@@ -576,7 +558,7 @@ void update_game(void) {
         if (!hit && ufo.active && bullets[i].active) {
             if (check_collision(bullets[i].x, bullets[i].y, 1, ufo.x, ufo.y, 12)) {
                 bullets[i].active = false; ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME;
-                int8_t pan = convert_pos_to_pan(ufo.x);
+                pan = convert_pos_to_pan(ufo.x);
                 play_explosion_sound(0, pan); 
                 spawn_particles(ufo.x, ufo.y, 10);
                 stop_interpolated_sound(ufo_sound); 
@@ -599,14 +581,17 @@ void update_game(void) {
                 ship.active = false;
                 lives--;
                 
-                // SOUND: Play large explosion for ship
-                int8_t pan = convert_pos_to_pan(ufo.x);
+                pan = convert_pos_to_pan(ufo.x);
                 play_explosion_sound(0, pan);
-                spawn_particles(ship.x, ship.y, 12);
+                spawn_ship_shatter();
                 
                 if (lives == 0) {
                     game_over = true;
-                    start_game_over_sound();
+                    play_game_over_sound();
+                    if (ufo.active) {
+                        ufo.active = false;
+                        stop_interpolated_sound(ufo_sound);
+                    }
                 } else {
                     init_ship();
                 }
@@ -617,16 +602,28 @@ void update_game(void) {
             if (!ufo_bullets[i].active) continue;
             if (check_collision(ufo_bullets[i].x, ufo_bullets[i].y, 1, ship.x, ship.y, 8)) {
                 bullets[i].active = false; ship.active = false; lives--; 
-                int8_t pan = convert_pos_to_pan(ufo.x);
+                pan = convert_pos_to_pan(ufo.x);
                 play_explosion_sound(0, pan); 
-                if (lives == 0) { game_over = true; start_game_over_sound(); } else init_ship();
+                spawn_ship_shatter();
+                if (lives == 0) { game_over = true; play_game_over_sound(); } else init_ship();
             }
         }
         if (ufo.active && check_collision(ship.x, ship.y, 8, ufo.x, ufo.y, 12)) {
             ship.active = false; ufo.active = false; ufo_spawn_timer = UFO_SPAWN_TIME; lives--;
-            int8_t pan = convert_pos_to_pan(ufo.x);
+            pan = convert_pos_to_pan(ufo.x);
+            spawn_ship_shatter();
             play_explosion_sound(0, pan); stop_interpolated_sound(ufo_sound);
-            if (lives == 0) { game_over = true; start_game_over_sound(); } else init_ship();
+            if (lives == 0) { game_over = true; play_game_over_sound(); } else init_ship();
+        }
+    }
+
+    for (uint8_t i = 0; i < MAX_SHIP_DEBRIS; i++) {
+        if (ship_debris[i].active) {
+            ship_debris[i].x += ship_debris[i].vx;
+            ship_debris[i].y += ship_debris[i].vy;
+            ship_debris[i].angle = (ship_debris[i].angle + ship_debris[i].rot_speed) & 63;
+            ship_debris[i].lifetime--;
+            if (ship_debris[i].lifetime == 0) ship_debris[i].active = false;
         }
     }
     
@@ -686,7 +683,6 @@ void draw_game(uint16_t buffer) {
         }
     }
     
-    // Debug: count and draw asteroids
     uint8_t drawn_count = 0;
     for (uint8_t i = 0; i < MAX_ASTEROIDS; i++) {
         if (asteroids[i].active) {
@@ -745,23 +741,41 @@ void draw_game(uint16_t buffer) {
             }
         }
     }
-    
-    // if (drawn_count > 0 && (frame_counter % 60) == 0) {
-    //     printf("Drew %u asteroids this frame\n", drawn_count);
-    // }
+
+    for (uint8_t i = 0; i < MAX_SHIP_DEBRIS; i++) {
+        if (ship_debris[i].active) {
+            uint8_t next = (i + 1 < 4) ? (i + 1) : 0;
+            int16_t sx = scaled_sin[ship_debris[i].angle];
+            int16_t cx = scaled_cos[ship_debris[i].angle];
+
+            int16_t x1 = ((int16_t)ship_shape[i][0] * cx - (int16_t)ship_shape[i][1] * sx) >> 8;
+            int16_t y1 = ((int16_t)ship_shape[i][0] * sx + (int16_t)ship_shape[i][1] * cx) >> 8;
+            int16_t x2 = ((int16_t)ship_shape[next][0] * cx - (int16_t)ship_shape[next][1] * sx) >> 8;
+            int16_t y2 = ((int16_t)ship_shape[next][0] * sx + (int16_t)ship_shape[next][1] * cx) >> 8;
+
+            draw_line2buffer(WHITE, 
+                (int16_t)(ship_debris[i].x >> 8) + x1, (int16_t)(ship_debris[i].y >> 8) + y1,
+                (int16_t)(ship_debris[i].x >> 8) + x2, (int16_t)(ship_debris[i].y >> 8) + y2, 
+                buffer);
+        }
+    }
     
     set_cursor(10, 10);
-    sprintf(text_buffer, "SCR:%u", score);
+    sprintf(text_buffer, "%u", score);
     draw_string2buffer(text_buffer, buffer);
     
     set_cursor(10, 25);
-    sprintf(text_buffer, "LVS:%u LVL:%u", lives, level);
+    sprintf(text_buffer, "LVS: %u", lives);
+    draw_string2buffer(text_buffer, buffer);
+
+    set_cursor(10, 40);
+    sprintf(text_buffer, "LVL: %u", level);
     draw_string2buffer(text_buffer, buffer);
     
     if (game_over) {
         set_cursor(260, 170);
         draw_string2buffer("GAME OVER", buffer);
-        set_cursor(240, 190);
+        set_cursor(255, 190);
         draw_string2buffer("Press SPACE", buffer);
     }
 }
@@ -782,9 +796,7 @@ int main(void) {
     init_bitmap_graphics(0xFF00, buffers[0], 0, 4, SCREEN_WIDTH, SCREEN_HEIGHT, 1);
 
     precalculate_rotation_tables(); 
-    // SOUND: Initialize sound system
     init_sound();
-    // test_waveforms();
     
     erase_buffer(buffers[0]);
     erase_buffer(buffers[1]);
@@ -796,14 +808,14 @@ int main(void) {
     
     active_buffer = 0;
     switch_buffer(buffers[active_buffer]);
-    
-    set_cursor(220, 140);
+
+    set_cursor(267, 140);
     draw_string2buffer("*** ASTEROIDS ***", buffers[active_buffer]);
-    set_cursor(180, 180);
+    set_cursor(260, 180);
     draw_string2buffer("Arrows:Rotate/Thrust", buffers[active_buffer]);
-    set_cursor(180, 195);
+    set_cursor(265, 195);
     draw_string2buffer("Space:Fire ESC:Quit", buffers[active_buffer]);
-    set_cursor(220, 220);
+    set_cursor(287, 220);
     draw_string2buffer("Press SPACE", buffers[active_buffer]);
 
     bool waiting = true;
@@ -826,15 +838,14 @@ int main(void) {
     bool fire_was_pressed = false;
 
 
-    uint8_t v; // vsync counter, incements every 1/60 second, rolls over every 256
-    // vsync loop
+    uint8_t v; 
     v = RIA.vsync;
     
     while (running) {
         if (v == RIA.vsync) {
-            continue; // wait until vsync is incremented
+            continue; 
         } else {
-            v = RIA.vsync; // new value for v
+            v = RIA.vsync; 
         }
 
         read_keyboard();
@@ -872,11 +883,9 @@ int main(void) {
                 if (ship.vy > SHIP_MAX_SPEED) ship.vy = SHIP_MAX_SPEED;
                 if (ship.vy < -SHIP_MAX_SPEED) ship.vy = -SHIP_MAX_SPEED;
                 
-                // SOUND: Start the thrust sound (or keep it going)
-                start_thrust_sound();
+                pan = convert_pos_to_pan(ship.x);
+                start_thrust_sound(pan);
             } else {
-                // SOUND: Tell our system the thrust sound should stop.
-                // The sound will fade out on its own.
                 stop_thrust_sound();
             }
             
@@ -896,7 +905,6 @@ int main(void) {
         
         update_game();
         
-        // SOUND: Update sound effects each frame
         update_sound();
         
         erase_buffer(buffers[!active_buffer]);

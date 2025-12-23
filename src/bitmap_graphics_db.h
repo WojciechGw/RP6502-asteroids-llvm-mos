@@ -3,6 +3,7 @@
 //
 // This library was written by tonyvr
 // and upgraded by WojciechGw for double buffering 
+// then optimized for speed by Grzegorz Rakoczy
 // to simplify bitmap graphics programming
 // of the RP6502 picocomputer designed by Rumbledethumps.
 //
@@ -36,31 +37,15 @@ void init_bitmap_graphics(uint16_t canvas_struct_address,
                           uint16_t canvas_width,
                           uint16_t canvas_height,
                           uint8_t  bits_per_pixel);
-uint16_t canvas_width(void);
-uint16_t canvas_height(void);
-uint8_t bits_per_pixel(void);
 
 uint16_t random(uint16_t low_limit, uint16_t high_limit);
 
 void set_cursor(uint16_t x, uint16_t y);
-void set_text_multiplier(uint8_t mult);
-void set_text_color(uint16_t color); // transparent background
-void set_text_colors(uint16_t color, uint16_t background);
-void set_text_wrap(bool w);
 
 void switch_buffer(uint16_t buffer_data_address);
 void erase_buffer(uint16_t buffer_data_address);
 void draw_pixel2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t buffer_data_address);
 void draw_line2buffer(uint16_t color, int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t buffer_data_address);
-void draw_vline2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t h, uint16_t buffer_data_address);
-void draw_hline2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t w, uint16_t buffer_data_address);
-void draw_rect2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t buffer_data_address);
-void fill_rect2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t buffer_data_address);
-void draw_circle2buffer(uint16_t color, uint16_t x0, uint16_t y0, uint16_t r, uint16_t buffer_data_address);
-void fill_circle2buffer(uint16_t color, uint16_t x0, uint16_t y0, uint16_t r, uint16_t buffer_data_address);
-void draw_rounded_rect2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t r, uint16_t buffer_data_address);
-void fill_rounded_rect2buffer(uint16_t color, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t r, uint16_t buffer_data_address);
-// void draw_char2buffer(char chr, uint16_t x, uint16_t y, uint16_t buffer_data_address);
 void draw_char2buffer(char chr, uint16_t buffer_addr);
 void draw_string2buffer(char * str, uint16_t buffer_data_address);
 
