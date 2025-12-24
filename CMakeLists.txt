@@ -4,7 +4,7 @@ set(LLVM_MOS_PLATFORM rp6502)
 find_package(llvm-mos-sdk REQUIRED)
 project(MY-RP6502-PROJECT)
 add_executable(asteroids)
-rp6502_executable(asteroids)
+rp6502_executable(asteroids DATA file RESET file)
 target_sources(asteroids PRIVATE
     src/colors.c
     src/bitmap_graphics_db.c
