@@ -13,4 +13,7 @@
             "statusBarVisibility": "hidden",
         }
     },
+    "cmake.environment": {
+        "PATH": "C:/@prg/llvm-mos/bin:${env:PATH}"
+    }
 }

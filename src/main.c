@@ -44,8 +44,11 @@
 
 #define KEYBOARD_INPUT 0xFF10
 #define KEYBOARD_BYTES 32
+
 uint8_t keystates[KEYBOARD_BYTES] = {0};
 #define key(code) (keystates[code >> 3] & (1 << (code & 7)))
+
+void *argv_mem(size_t size) { return malloc(size); }
 
 uint8_t scale = 80;
 
@@ -788,8 +791,14 @@ void read_keyboard(void) {
     }
 }
 
+int main(int argc, char *argv[]){
 
-int main(void) {
+    int i;
+
+    printf("argc = %d\n", argc);
+    for (i = 0; i < argc; i++)
+        printf("argv[%d] = %s\n", i, argv[i]);
+        
     buffers[0] = 0x0000;
     buffers[1] = 0x7080;
     
